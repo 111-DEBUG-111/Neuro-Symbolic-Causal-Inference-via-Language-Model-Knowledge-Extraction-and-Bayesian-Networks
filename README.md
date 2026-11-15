@@ -1,7 +1,8 @@
 # Neuro-Symbolic Causal Inference
 
 Extract cause→effect relations from text, build a causal graph (DAG), fit a Bayesian network to real survey data, and answer
-"what if we intervened?" questions. A rule-based extractor (spaCy) is compared with a fine-tuned transformer (DistilBERT).
+"what if we intervened?" questions. A rule-based extractor (spaCy) is compared with fine-tuned transformers (DistilBERT, and
+BiomedBERT adapted to PubMed in Step 5b).
 
 Everything is in one notebook: **`causal_nlp.ipynb`**. Its first cell has a table of contents and a summary of results.
 
@@ -27,8 +28,9 @@ Open `causal_nlp.ipynb` with the **Python 3 (.venv)** kernel and run all cells, 
 .venv/bin/jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=-1 causal_nlp.ipynb
 ```
 
-With the cached files below, a full run takes about 6 minutes on a laptop. Without `models/`, DistilBERT is retrained first,
-which takes about 20 minutes on an Apple M-series GPU and longer on CPU.
+With the cached files below, a full run takes about 8 minutes on a laptop. Without `models/`, three models are trained first:
+DistilBERT on SemEval (~20 min on an Apple M-series GPU), and DistilBERT and BiomedBERT on SemEval + PubMed (Step 5b, ~45 and ~90 min).
+On an 8 GB machine, train with nothing else open. Step 5b uses micro-batches of 8 with gradient checkpointing to fit in memory.
 
 ## What is in the folder
 
@@ -37,23 +39,26 @@ which takes about 20 minutes on an Apple M-series GPU and longer on CPU.
 | `causal_nlp.ipynb` | The deliverable notebook | – |
 | `requirements.txt`, `requirements-lock.txt` | Exact package versions used (direct + full lock) | – |
 | `data/pubmed/abstracts.jsonl` | 500 PubMed abstracts (smoking & lung disease) | **Keep it.** PubMed search results change over time, and the labels in `data/labels/` belong to these exact abstracts. The notebook stops with an error if they no longer match. |
-| `data/labels/` | Blind samples and Claude's silver labels (150 SemEval, 300 PubMed) | **Keep it.** Made once by an instruction model (Claude); the notebook cannot regenerate it. |
-| `data/review/edges_*.csv` | Every extracted graph edge with an example sentence, plus a `keep` column | Rewritten on each run. **Reviewer decisions are kept.** |
+| `data/labels/` | Blind samples and Claude's silver labels: 150 SemEval and 300 PubMed evaluation pairs, plus 900 PubMed training pairs (`pubmed_train_*`, Step 5b). `pubmed_sample_design.csv` freezes the evaluation sample's strata and weights | **Keep it.** Made once by an instruction model (Claude); the notebook cannot regenerate it. |
+| `data/review/edges_*.csv` | Every extracted graph edge with an example sentence, plus a `keep` column (one file per extractor) | Rewritten on each run. **Reviewer decisions are kept.** |
 | `data/nhanes/` | NHANES 2013–2018 survey files + linked mortality | Yes, downloaded automatically. *Not in the git repo.* |
-| `models/distilbert-causal/` | Fine-tuned DistilBERT (best epoch) | Yes, by retraining: set `RETRAIN = True` in Step 5. *Not in the git repo* (255 MB, over GitHub's file limit), so after cloning, the first run trains it (~20 min). |
+| `models/distilbert-causal/` | Fine-tuned DistilBERT, SemEval only (best epoch) | Yes, by retraining: set `RETRAIN = True` in Step 5. *Not in the git repo* (255 MB, over GitHub's file limit), so after cloning, the first run trains it (~20 min). |
+| `models/distilbert-causal-pubmed/`, `models/biomedbert-causal-pubmed/` | DistilBERT and BiomedBERT fine-tuned on SemEval + PubMed train pairs (Step 5b) | Yes, trained automatically on the first run. *Not in the git repo.* |
 | `figures/` | DAG images | Yes, on every run |
 
 SemEval-2010 Task 8 is downloaded from the Hugging Face hub on each run (`SemEvalWorkshop/sem_eval_2010_task_8`).
 
 ## Reviewing edges (team task)
 
-The brief asks that only reviewed predictions reach the graph. Open `data/review/edges_rules.csv` (and `edges_distilbert.csv`), read
+The brief asks that only reviewed predictions reach the graph. Open `data/review/edges_rules.csv` (and `edges_distilbert.csv`,
+`edges_rules_pubmed.csv`, `edges_biomedbert_pubmed.csv`), read
 the example sentence for each edge, and type `yes` or `no` in the `keep` column. Re-run the notebook: edges marked `no` are removed,
 and the notebook reports how many edges are still unreviewed.
 
 ## Data sources
 
 - SemEval-2010 Task 8: https://huggingface.co/datasets/SemEvalWorkshop/sem_eval_2010_task_8
+- BiomedBERT (Gu et al., 2021), pretrained on PubMed abstracts: https://huggingface.co/microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract
 - PubMed E-utilities API: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/
 - NHANES: https://wwwn.cdc.gov/nchs/nhanes/ and the NCHS linked mortality files: https://ftp.cdc.gov/pub/Health_Statistics/NCHS/datalinkage/linked_mortality/
 - Reference conclusions for graph evaluation: US Surgeon General's reports, 2014 (https://www.ncbi.nlm.nih.gov/books/NBK294322/, https://www.ncbi.nlm.nih.gov/books/NBK294300/) and 2010 (https://www.ncbi.nlm.nih.gov/books/NBK53021/)
