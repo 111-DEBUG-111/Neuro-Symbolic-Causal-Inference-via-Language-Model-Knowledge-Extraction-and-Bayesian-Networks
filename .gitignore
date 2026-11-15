@@ -19,3 +19,9 @@ data/nhanes/
 # Deliberately NOT ignored:
 #   data/pubmed/  and  data/labels/  -> cannot be regenerated; the labels belong to these exact abstracts
 #   data/review/  and  figures/      -> small, and useful to see on GitHub
+
+# LaTeX build files (keep report.tex and report.pdf)
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
