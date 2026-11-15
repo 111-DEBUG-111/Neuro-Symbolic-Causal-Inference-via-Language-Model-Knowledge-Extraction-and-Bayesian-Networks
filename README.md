@@ -3,7 +3,7 @@
 Extract cause→effect relations from text, build a causal graph (DAG), fit a Bayesian network to real survey data, and answer
 "what if we intervened?" questions. A rule-based extractor (spaCy) is compared with a fine-tuned transformer (DistilBERT).
 
-Everything is in one notebook: **`causal_nlp.ipynb`**. Its first cell has a table of contents and a summary of results.
+Everything is in one notebook: **`causal_nlp.ipynb`**. Its first cell has a table of contents and a summary of results.    
 
 ## Setup (Python 3.14)
 
@@ -40,6 +40,7 @@ which takes about 20 minutes on an Apple M-series GPU and longer on CPU.
 | `data/labels/` | Blind samples and Claude's silver labels (150 SemEval, 300 PubMed) | **Keep it.** Made once by an instruction model (Claude); the notebook cannot regenerate it. |
 | `data/review/edges_*.csv` | Every extracted graph edge with an example sentence, plus a `keep` column | Rewritten on each run. **Reviewer decisions are kept.** |
 | `data/nhanes/` | NHANES 2013–2018 survey files + linked mortality | Yes, downloaded automatically. *Not in the git repo.* |
+
 | `models/distilbert-causal/` | Fine-tuned DistilBERT (best epoch) | Yes, by retraining: set `RETRAIN = True` in Step 5. *Not in the git repo* (255 MB, over GitHub's file limit), so after cloning, the first run trains it (~20 min). |
 | `figures/` | DAG images | Yes, on every run |
 
