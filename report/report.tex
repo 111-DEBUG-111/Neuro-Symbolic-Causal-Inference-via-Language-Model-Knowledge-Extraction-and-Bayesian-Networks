@@ -43,7 +43,8 @@ rule-based baseline over spaCy dependency parses, and a fine-tuned DistilBERT re
 test set, DistilBERT clearly outperforms the rules (F1 0.91 vs.\ 0.74, non-overlapping bootstrap intervals). Applied to 500 PubMed
 abstracts on smoking and lung disease, the picture changes. DistilBERT's precision falls to 0.45 against silver labels, its graph needs
 59 edges removed to become acyclic, and it proposes arrows that reverse established facts, while the rules remain precise (0.79) but
-recall only 0.15. Against 14 conclusions of the US Surgeon General, the rule graph has an edge precision of 0.58 with no contradictions,
+recall only 0.15. Retraining DistilBERT with 780 labelled PubMed pairs, taking every pair of each sentence and splitting by abstract,
+raises its PubMed F1 from 0.43 to 0.54 and halves its false alarms, while its SemEval test F1 stays at 0.92. Against 14 conclusions of the US Surgeon General, the rule graph has an edge precision of 0.58 with no contradictions,
 and the DistilBERT graph 0.22 with two. A Bayesian network over the extracted structure, fitted to 16{,}904 NHANES adults with age as a
 confounder, answers six documented $\doop$-queries (e.g.\ a 9.3$\times$ causal risk ratio of smoking on COPD) in agreement with the
 published evidence. A single reversed arrow, \textit{COPD $\rightarrow$ smoking}, which DistilBERT supported in 33 abstracts, would change
@@ -71,6 +72,8 @@ self-loops and cycles, tests the graph against data, fits a Bayesian network, an
         labelled in-domain test set and on scientific text.
   \item A separate evaluation of the resulting graphs, by edge precision against cited Surgeon General conclusions and by the effect of the
         graph structure on causal answers.
+  \item A targeted fix for the DL model's domain shift: retraining with labelled PubMed pairs, several per sentence and split by
+        abstract, evaluated on the same held-out pairs as before.
 \end{itemize}
 
 \begin{figure}[t]
@@ -184,7 +187,7 @@ on the \emph{training} split was at least 0.5. This removed, for example, \texti
 \textit{from} (43\%), which mostly signal Product-Producer and Entity-Origin relations, and kept nine triggers (\textit{arise, cause,
 contribute, generate, lead, reason, result, stem, trigger}).
 
-\subsection{DL model: fine-tuned DistilBERT}
+\subsection{DL model: fine-tuned DistilBERT}\label{sec:dl}
 
 We fine-tuned \texttt{distilbert-base-uncased}~\citep{sanh2019,wolf2020} as a three-way sequence classifier over the marked sentence,
 adding \texttt{<e1>}, \texttt{</e1>}, \texttt{<e2>}, \texttt{</e2>} as special tokens~\citep{baldinisoares2019}. Training used
@@ -409,6 +412,52 @@ intervening on smoking cannot affect something that precedes it. The two structu
 so the data cannot choose between them. DistilBERT supported the reversed arrow in 33 abstracts, and cycle breaking rejected it only because the correct
 direction had more support (104 abstracts).
 
+\subsection{Fixing domain shift with labelled PubMed pairs}
+
+The diagnostics above suggest one remedy for both failure modes: train on scientific text, and show the model sentences in which one
+pair is causal and another is not. We therefore labelled a second PubMed sample for \emph{training}.
+
+\textbf{Sample.} All 192 abstracts that contribute to the 300 evaluation pairs were excluded. From the remaining 304 abstracts, whole
+abstracts were drawn at random (seed 42) until about 1{,}000 pairs were reached, and \emph{every} candidate pair of every sentence was
+kept: 1{,}001 pairs from 397 sentences of 105 abstracts. The split is by abstract: 89 abstracts (780 pairs) for training and 16
+(221 pairs) for validation. They were labelled with the same guideline and labeller as the 300 evaluation pairs, blind to all predictions;
+152 pairs (15\%) are causal, and 43 sentences contain both a causal and a non-causal pair.
+
+\textbf{Training.} A fresh DistilBERT was fine-tuned with the recipe of Section~\ref{sec:dl} on SemEval train plus the 780 PubMed pairs, and the
+epoch was chosen by F1 on the 221 PubMed validation pairs (epoch 3, F1 0.69; the original model scores 0.49 on the same pairs). Long
+PubMed sentences exhausted the memory of an 8\,GB laptop at batch size 32, so gradients were accumulated over four mini-batches of
+eight. This keeps 32 sentences per update and reduces peak memory to about a quarter.
+
+\begin{table}[H]
+\centering\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & Original DistilBERT & + 780 PubMed pairs \\
+\midrule
+SemEval test F1 [95\% CI] & 0.91 [0.88, 0.93] & \textbf{0.92} [0.89, 0.94] \\
+PubMed precision / recall & 0.45 / 0.42 & \textbf{0.66} / \textbf{0.46} \\
+PubMed F1 [95\% CI] & 0.43 [0.36, 0.52] & \textbf{0.54} [0.44, 0.65] \\
+False alarms (est., of 6{,}051) & 744 & \textbf{357} \\
+Wrong direction (est., of 6{,}051) & 23 & \textbf{10} \\
+Pairs called causal, sentences with 7+ concepts & 24\% & \textbf{19\%} \\
+Edges removed to break cycles & 59 & \textbf{37} \\
+Graph edge precision & 0.22 & \textbf{0.29} \\
+Edges contradicting the sources & \textbf{2} & 4 \\
+\bottomrule
+\end{tabular}
+\caption{The DL model before and after adding labelled PubMed pairs. PubMed scores use the same 300 evaluation pairs and weights as
+Table~\ref{tab:pubmed}.}
+\label{tab:fix}
+\end{table}
+
+Precision on PubMed rises by 0.21 and the estimated false alarms halve, without any loss on SemEval (Table~\ref{tab:fix}). Pair
+confusion is reduced but not solved: the share of pairs called causal now falls as sentences get more crowded, but stays well above the
+rules. The graph needs fewer edges removed, and its edge precision rises, but two new edges contradict the sources (\textit{mortality
+$\rightarrow$ chronic bronchitis} and \textit{COPD $\rightarrow$ oxidative stress}). Support for the reversed arrow \textit{COPD
+$\rightarrow$ smoking} drops from 33 to 17 abstracts, against 149 for the correct direction. The causal answers are unchanged (Q1 9.32,
+Q4 6.57, Q5 1.77). Two caveats apply: the bootstrap intervals still overlap, and the same labeller produced both the training and the
+evaluation labels, so part of the gain may reflect learning the labeller's conventions.
+
 \section{Discussion}
 
 \textbf{The extractors trade precision for recall, and neither is enough alone.} On in-domain text the fine-tuned model is clearly
@@ -430,6 +479,8 @@ and text that reports them, conflate.
   \item The reference list holds 14 conclusions, so ``unverified'' edges (e.g.\ mechanistic links such as apoptosis) may still be true.
   \item NHANES diagnoses are self-reported, mortality follow-up is short (about 1--7 years), and lung cancer is rare (54 cases), so Q4 is
         uncertain. Age is the only confounder modelled; income, occupational exposure and pollution are not.
+  \item In the domain-shift fix, the same labeller produced the PubMed training and evaluation labels, which may flatter the
+        retrained model; 300 evaluation pairs also leave the F1 intervals overlapping.
   \item Cycle breaking keeps the better-supported direction, which can fail when the wrong direction is stated more often.
 \end{itemize}
 
@@ -437,13 +488,14 @@ and text that reports them, conflate.
 
 Fine-tuned transformers read causal language well, but on their own they do not produce a causal model that can be trusted. Combining
 them with a symbolic stage that enforces structure, keeps evidence, tests against data and answers $\doop$-queries yields answers that
-agree with the published evidence and avoid the confounding that misleads raw observation. Future work: (1) fine-tune on labelled PubMed
-pairs, split by abstract to avoid leakage, to address domain shift; (2) train with several marked pairs per sentence, so the model learns
-\emph{which} pair is causal; (3) complete human review of the extracted edges and of a sample of the silver labels; and (4) add confounders
+agree with the published evidence and avoid the confounding that misleads raw observation. Retraining with labelled PubMed pairs, several per sentence and split
+by abstract, narrowed the domain gap (PubMed F1 0.43 to 0.54). Future work: (1) human labels for the PubMed training and evaluation pairs;
+(2) a biomedical starting model such as PubMedBERT; (3) complete human review of the extracted edges and of a sample of the silver labels; and (4) add confounders
 and spirometry-based airflow obstruction (NHANES 2007--2012) to the network.
 
 \paragraph{Reproducibility.} All code is in one notebook (\texttt{causal\_nlp.ipynb}) with a fixed seed. Every download is cached, and package
-versions are pinned in a full lock file. The notebook was re-run from scratch in a freshly built environment and reproduced every reported number.
+versions are pinned in a full lock file. Steps 1--6 were re-run from scratch in a freshly built environment and reproduced every reported number; the domain-shift fix
+(Step 7) was re-run end to end from the cached model.
 
 \begin{thebibliography}{99}
 \setlength{\itemsep}{2pt}
